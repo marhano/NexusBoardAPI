@@ -139,8 +139,18 @@ namespace NexusBoardAPI.Controllers
         [Authorize(Roles = nameof(UserRole.Admin))]
         public async Task<IActionResult> GetAllProfile()
         {
+            var currentAdminUsername = User.Identity?.Name;
+            if(string.IsNullOrEmpty(currentAdminUsername))
+                return Unauthorized("User is not authenticated.");
+
+            var currentAdmin = await _context.Users.SingleOrDefaultAsync(u => u.Username == currentAdminUsername && u.Role == UserRole.Admin);
+
+            if (currentAdmin == null)
+                return Forbid("Only admins can access this resource.");
+
             var profiles = await _context.UserProfiles
                 .Include(p => p.User)
+                .Where(p => p.User.AdminId == currentAdmin.Id)
                 .Select(p => new
                 {
                     p.User.Username,
@@ -156,6 +166,27 @@ namespace NexusBoardAPI.Controllers
                 .ToListAsync();
 
             return Ok(profiles);
+        }
+
+        [HttpDelete("{username}")]
+        [Authorize(Roles = nameof(UserRole.Admin))]
+        public async Task<IActionResult> DeleteUser(string username)
+        {
+            var currentAdminUsername = User.Identity?.Name;
+            if(string.IsNullOrEmpty(currentAdminUsername))
+                return Unauthorized(new { error = "Unauthorized", message = "User is not authenticated."});
+
+            var currentAdmin = await _context.Users.SingleOrDefaultAsync(u => u.Username == currentAdminUsername && u.Role == UserRole.Admin);
+            if(currentAdmin == null)
+                return Unauthorized(new { error = "Forbidden", message = "Only admins can delete users."});
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == username);
+            if(user == null)
+                return NotFound(new { error = "User not found.", message = $"No user with username '{username}' exists." });
+            
+            _context.Users.Remove(user);
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "User deleted successfully." });
         }
     }
 }

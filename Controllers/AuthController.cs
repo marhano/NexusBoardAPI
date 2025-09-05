@@ -30,14 +30,20 @@ namespace NexusBoardAPI.Controllers
         [Authorize(Roles = nameof(UserRole.Admin))]
         public async Task<IActionResult> RegisterUser(UserDto dto)
         {
-            if(await _context.Users.AnyAsync(u => u.Username == dto.Username))
+            var adminUsername = User.Identity?.Name;
+            var admin = await _context.Users.SingleOrDefaultAsync(u => u.Username == adminUsername && u.Role == UserRole.Admin);
+            if (admin == null)
+                return Forbid("Only admin can register users.");
+
+            if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
                 return BadRequest("Username already exists.");
 
             var user = new User
             {
                 Username = dto.Username,
                 Email = dto.Email,
-                PasswordHash = _authService.HashPassword(dto.Password)
+                PasswordHash = _authService.HashPassword(dto.Password),
+                AdminId = admin.Id,
             };
 
             _context.Users.Add(user);
