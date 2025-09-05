@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using NexusBoardAPI.Data;
 using NexusBoardAPI.Models;
+using NexusBoardAPI.Models.DTO;
+using NexusBoardAPI.Services;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -16,17 +18,17 @@ namespace NexusBoardAPI.Controllers
     public class AuthController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        private readonly IConfiguration _configuration;
+        private readonly AuthService _authService;
 
-        public AuthController(ApplicationDbContext context, IConfiguration configuration)
+        public AuthController(ApplicationDbContext context, AuthService authService)
         {
             _context = context;
-            _configuration = configuration;
+            _authService = authService;
         }
 
-        [HttpPost("register")]
-        [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> Register(UserDto dto)
+        [HttpPost("register/user")]
+        [Authorize(Roles = nameof(UserRole.Admin))]
+        public async Task<IActionResult> RegisterUser(UserDto dto)
         {
             if(await _context.Users.AnyAsync(u => u.Username == dto.Username))
                 return BadRequest("Username already exists.");
@@ -34,7 +36,8 @@ namespace NexusBoardAPI.Controllers
             var user = new User
             {
                 Username = dto.Username,
-                PasswordHash = HashPassword(dto.Password)
+                Email = dto.Email,
+                PasswordHash = _authService.HashPassword(dto.Password)
             };
 
             _context.Users.Add(user);
@@ -42,47 +45,86 @@ namespace NexusBoardAPI.Controllers
             return Ok("User registered successfully.");
         }
 
+        [HttpPost("register/admin")]
+        public async Task<IActionResult> RegisterAdmin(UserDto dto)
+        {
+            if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
+                return BadRequest("Username already exists.");
+
+            var user = new User             
+            {
+                Username = dto.Username,
+                Email = dto.Email,
+                PasswordHash = _authService.HashPassword(dto.Password),
+                Role = UserRole.Admin
+            };
+
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+            return Ok("Admin registered successfully.");
+        }
+
         [HttpPost("login")]
         public async Task<IActionResult> Login(UserDto dto)
         {
             var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == dto.Username);
-            if(user == null || user.PasswordHash != HashPassword(dto.Password))
+            if(user == null || user.PasswordHash != _authService.HashPassword(dto.Password))
                 return Unauthorized("Invalid username or password.");
 
-            var token = GenerateJwtToken(user);
+            var token = _authService.GenerateJwtToken(user);
             return Ok(new { token });
         }
 
-        private string HashPassword(string password)
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword(ResetPasswordDto dto)
         {
-            using var sha256 = SHA256.Create();
-            var bytes = System.Text.Encoding.UTF8.GetBytes(password);
-            var hash = sha256.ComputeHash(bytes);
-            return Convert.ToBase64String(hash);
+            var user = await _context.Users.SingleOrDefaultAsync(u => 
+                u.Username == dto.Username &&
+                u.PasswordResetToken == dto.Token &&
+                u.PasswordResetTokenExpiry > DateTime.UtcNow);
+
+            if(user == null)
+                return BadRequest("Invalid or expired token.");
+
+            user.PasswordHash = _authService.HashPassword(dto.NewPassword);
+            user.PasswordResetToken = null;
+            user.PasswordResetTokenExpiry = null;
+            await _context.SaveChangesAsync();
+
+            return Ok();
         }
 
-        private string GenerateJwtToken(User user)
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword(ForgotPasswordDto dto)
         {
-            var jwtSettings = _configuration.GetSection("Jwt");
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == dto.Username && u.Email == dto.Email);
+            if(user == null)
+                return NotFound("User not found.");
 
-            var claims = new[]
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Username),
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Role, user.Role.ToString()),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            };
+            user.PasswordResetToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+            user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(1);
 
-            var token = new JwtSecurityToken(
-                issuer: jwtSettings["Issuer"],
-                audience: jwtSettings["Audience"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(int.Parse(jwtSettings["ExpiresInMinutes"])),
-                signingCredentials: creds);
+            await _context.SaveChangesAsync();
+            // In a real application, send the token via email here.
+            return Ok();
+        }
 
-            return new JwtSecurityTokenHandler().WriteToken(token);
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword(ChangePasswordDto dto)
+        {
+            var username = User.Identity?.Name;
+            if(string.IsNullOrEmpty(username))
+                return Unauthorized();
+
+            var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == username);
+            if(user == null || user.PasswordHash != _authService.HashPassword(dto.CurrentPassword))
+                return BadRequest("Current password is incorrect.");
+
+            user.PasswordHash = _authService.HashPassword(dto.NewPassword);
+            await _context.SaveChangesAsync();
+
+            return Ok("Password changed successfully.");
         }
     }
 }
