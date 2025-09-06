@@ -1,15 +1,12 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using NexusBoardAPI.Data;
 using NexusBoardAPI.Models;
 using NexusBoardAPI.Models.DTO;
 using NexusBoardAPI.Services;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Security.Cryptography;
-using System.Text;
+using System.Transactions;
 
 namespace NexusBoardAPI.Controllers
 {
@@ -33,10 +30,25 @@ namespace NexusBoardAPI.Controllers
             var adminUsername = User.Identity?.Name;
             var admin = await _context.Users.SingleOrDefaultAsync(u => u.Username == adminUsername && u.Role == UserRole.Admin);
             if (admin == null)
-                return Forbid("Only admin can register users.");
+                return Problem(
+                    detail: "Only admins can register a user.",
+                    statusCode: StatusCodes.Status401Unauthorized,
+                    title: "Unauthorized"
+                );
 
             if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
-                return BadRequest("Username already exists.");
+                return Problem(
+                    detail: "Username already exists.",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "BadRequest"
+                );
+
+            if(dto.Role == UserRole.Admin || dto.Role == UserRole.MasterAdmin)
+                return Problem(
+                    detail: "Cannot assign Admin or MasterAdmin role.",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "BadRequest"
+                );
 
             var user = new User
             {
@@ -44,18 +56,33 @@ namespace NexusBoardAPI.Controllers
                 Email = dto.Email,
                 PasswordHash = _authService.HashPassword(dto.Password),
                 AdminId = admin.Id,
+                Role = dto.Role ?? UserRole.Developer
             };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
-            return Ok("User registered successfully.");
+
+            var profile = new UserProfile
+            {
+                FullName = dto.Username,
+                UserId = user.Id,
+                User = user
+            };
+            _context.UserProfiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "User registered successfully." });
         }
 
         [HttpPost("register/admin")]
         public async Task<IActionResult> RegisterAdmin(UserDto dto)
         {
             if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
-                return BadRequest("Username already exists.");
+                return Problem(
+                     detail: "Username already exists.",
+                     statusCode: StatusCodes.Status400BadRequest,
+                     title: "BadRequest"
+                );
 
             var user = new User             
             {
@@ -67,7 +94,8 @@ namespace NexusBoardAPI.Controllers
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
-            return Ok("Admin registered successfully.");
+
+            return Ok(new { message = "Admin registered successfully." });
         }
 
         [HttpPost("login")]
@@ -75,7 +103,11 @@ namespace NexusBoardAPI.Controllers
         {
             var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == dto.Username);
             if(user == null || user.PasswordHash != _authService.HashPassword(dto.Password))
-                return Unauthorized("Invalid username or password.");
+                return Problem(
+                   detail: "Invalid username or password.",
+                   statusCode: StatusCodes.Status401Unauthorized,
+                   title: "Unauthorized"
+                );
 
             var token = _authService.GenerateJwtToken(user);
             return Ok(new { token });
@@ -89,15 +121,19 @@ namespace NexusBoardAPI.Controllers
                 u.PasswordResetToken == dto.Token &&
                 u.PasswordResetTokenExpiry > DateTime.UtcNow);
 
-            if(user == null)
-                return BadRequest("Invalid or expired token.");
+            if (user == null)
+                return Problem(
+                     detail: "Invalid token or token has expired.",
+                     statusCode: StatusCodes.Status400BadRequest,
+                     title: "BadRequest"
+                );
 
             user.PasswordHash = _authService.HashPassword(dto.NewPassword);
             user.PasswordResetToken = null;
             user.PasswordResetTokenExpiry = null;
             await _context.SaveChangesAsync();
 
-            return Ok();
+            return Ok(new { message = "Password successfully reset."});
         }
 
         [HttpPost("forgot-password")]
@@ -105,14 +141,18 @@ namespace NexusBoardAPI.Controllers
         {
             var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == dto.Username && u.Email == dto.Email);
             if(user == null)
-                return NotFound("User not found.");
+                return Problem(
+                     detail: "User with the provided username and email does not exist.",
+                     statusCode: StatusCodes.Status400BadRequest,
+                     title: "BadRequest"
+                );
 
             user.PasswordResetToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
             user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(1);
 
             await _context.SaveChangesAsync();
             // In a real application, send the token via email here.
-            return Ok();
+            return Ok(new { message = "Password reset token generated. Please check your email for further instructions." });
         }
 
         [HttpPost("change-password")]
@@ -125,12 +165,16 @@ namespace NexusBoardAPI.Controllers
 
             var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == username);
             if(user == null || user.PasswordHash != _authService.HashPassword(dto.CurrentPassword))
-                return BadRequest("Current password is incorrect.");
+                return Problem(
+                     detail: "Current password is incorrect.",
+                     statusCode: StatusCodes.Status400BadRequest,
+                     title: "BadRequest"
+                );
 
             user.PasswordHash = _authService.HashPassword(dto.NewPassword);
             await _context.SaveChangesAsync();
 
-            return Ok("Password changed successfully.");
+            return Ok(new { message = "Password changed successfully." });
         }
     }
 }

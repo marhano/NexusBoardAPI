@@ -1,5 +1,6 @@
-
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using NexusBoardAPI.Data;
@@ -36,8 +37,16 @@ namespace NexusBoardAPI
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-            // Add services to the container.
-            builder.Services.AddControllers();
+            // Add services to the container.\
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(
+                        namingPolicy: null,
+                        allowIntegerValues: true
+                    ));
+                    options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+                });
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
@@ -53,6 +62,28 @@ namespace NexusBoardAPI
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
+            app.UseExceptionHandler(errorApp =>
+            {
+                errorApp.Run(async context =>
+                {
+                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                    context.Response.ContentType = "application/json";
+
+                    var exceptionHandlerPathFeature = context.Features.Get<IExceptionHandlerPathFeature>();
+                    var exception = exceptionHandlerPathFeature?.Error;
+
+                    var problem = new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "An unexpected error occurred.",
+                        Detail = exception?.Message,
+                        Instance = context.Request.Path
+                    };
+
+                    await context.Response.WriteAsJsonAsync(problem);
+                });
+            });
 
             app.UseHttpsRedirection();
             app.UseAuthentication();

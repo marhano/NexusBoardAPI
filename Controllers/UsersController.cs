@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NexusBoardAPI.Data;
@@ -26,17 +25,28 @@ namespace NexusBoardAPI.Controllers
             var currentUser = User.Identity?.Name;
             var isAdmin = User.IsInRole(UserRole.Admin.ToString()) || User.IsInRole(UserRole.MasterAdmin.ToString());
             if (!isAdmin && !string.Equals(currentUser, username, StringComparison.OrdinalIgnoreCase))
-                return Forbid("You can only update your own profile.");
+                return Problem(
+                    detail: "You can only update your own profile.",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Forbidden"
+                );
 
             var user = await _context.Users
                 .Include(u => u.Profile)
                 .FirstOrDefaultAsync(u => u.Username == username);
-
             if (user == null)
-                return NotFound("User not found.");
+                return Problem(
+                    detail: "User not found.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "NotFound"
+                );
 
             if (user.Profile == null)
-                return NotFound("User profile not found. Create a new profile first.");
+                return Problem(
+                    detail: "User does not have a profile. Use POST to create a new profile.",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "BadRequest"
+                );
 
             user.Profile.FullName = dto.FullName;
             user.Profile.AvatarUrl = dto.AvatarUrl;
@@ -44,7 +54,7 @@ namespace NexusBoardAPI.Controllers
 
             await _context.SaveChangesAsync();
 
-            return Ok();
+            return Ok(new { message = "Profile updated successfully." });
         }
 
         [HttpPost("{username}/profile")]
@@ -54,17 +64,28 @@ namespace NexusBoardAPI.Controllers
             var currentUser = User.Identity?.Name;
             var isAdmin = User.IsInRole(UserRole.Admin.ToString()) || User.IsInRole(UserRole.MasterAdmin.ToString());
             if (!isAdmin && !string.Equals(currentUser, username, StringComparison.OrdinalIgnoreCase))
-                return Forbid("You can only update your own profile.");
+                return Problem(
+                    detail: "You can only create your own profile.",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Forbidden"
+                );
 
             var user = await _context.Users
                 .Include(u => u.Profile)
                 .FirstOrDefaultAsync(u => u.Username == username);
-
             if (user == null)
-                return NotFound("User not found.");
+                return Problem(
+                    detail: "User not found.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "NotFound"
+                );
 
             if (user.Profile != null)
-                return BadRequest("User profile already exists. Use PUT to update.");
+                return Problem(
+                    detail: "User already has a profile. Use PUT to update the existing profile.",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "BadRequest"
+                );
 
             var profile = new UserProfile
             {
@@ -78,7 +99,7 @@ namespace NexusBoardAPI.Controllers
             _context.Add(profile);
             await _context.SaveChangesAsync();
 
-            return Ok("User profile upserted successfully.");
+            return Ok(new { message = "Profile created successfully." });
         }
 
         [HttpGet("/api/profile")]
@@ -86,17 +107,28 @@ namespace NexusBoardAPI.Controllers
         {
             var currentUser = User.Identity?.Name;
             if (string.IsNullOrEmpty(currentUser))
-                return Unauthorized("User is not authenticated.");
+                return Problem(
+                    detail: "User is not authenticated.",
+                    statusCode: StatusCodes.Status401Unauthorized,
+                    title: "Unauthorized"
+                );
 
             var user = await _context.Users
                 .Include(u => u.Profile)
                 .FirstOrDefaultAsync(u => u.Username == currentUser);
-
             if (user == null)
-                return NotFound("User not found.");
+                return Problem(
+                    detail: "Authenticated user not found in the database.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "NotFound"
+                );
 
             if (user.Profile == null)
-                return NotFound("User profile not found.");
+                return Problem(
+                    detail: "User does not have a profile.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "NotFound"
+                );
 
             return Ok(new
             {
@@ -121,10 +153,18 @@ namespace NexusBoardAPI.Controllers
                 .FirstOrDefaultAsync(u => u.Username == username);
 
             if (user == null)
-                return NotFound("User not found.");
+                return Problem(
+                    detail: $"No user with username '{username}' exists.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "NotFound"
+                );
 
             if (user.Profile == null)
-                return NotFound("User profile not found.");
+                return Problem(
+                    detail: $"User '{username}' does not have a profile.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "NotFound"
+                );
 
             var dto = new UserProfileDto
             {
@@ -141,12 +181,19 @@ namespace NexusBoardAPI.Controllers
         {
             var currentAdminUsername = User.Identity?.Name;
             if(string.IsNullOrEmpty(currentAdminUsername))
-                return Unauthorized("User is not authenticated.");
+                return Problem(
+                    detail: "User is not authenticated.",
+                    statusCode: StatusCodes.Status401Unauthorized,
+                    title: "Unauthorized"
+                );
 
             var currentAdmin = await _context.Users.SingleOrDefaultAsync(u => u.Username == currentAdminUsername && u.Role == UserRole.Admin);
-
             if (currentAdmin == null)
-                return Forbid("Only admins can access this resource.");
+                return Problem(
+                   detail: "Only admins can view all user profiles.",
+                   statusCode: StatusCodes.Status401Unauthorized,
+                   title: "Unauthorized"
+                );
 
             var profiles = await _context.UserProfiles
                 .Include(p => p.User)
@@ -174,19 +221,103 @@ namespace NexusBoardAPI.Controllers
         {
             var currentAdminUsername = User.Identity?.Name;
             if(string.IsNullOrEmpty(currentAdminUsername))
-                return Unauthorized(new { error = "Unauthorized", message = "User is not authenticated."});
+                return Problem(
+                    detail: "User is not authenticated.",
+                    statusCode: StatusCodes.Status401Unauthorized,
+                    title: "Unauthorized"
+                );
 
             var currentAdmin = await _context.Users.SingleOrDefaultAsync(u => u.Username == currentAdminUsername && u.Role == UserRole.Admin);
             if(currentAdmin == null)
-                return Unauthorized(new { error = "Forbidden", message = "Only admins can delete users."});
+                return Problem(
+                   detail: "Only admins can delete users.",
+                   statusCode: StatusCodes.Status401Unauthorized,
+                   title: "Unauthorized"
+                );
 
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == username);
             if(user == null)
-                return NotFound(new { error = "User not found.", message = $"No user with username '{username}' exists." });
-            
+                return Problem(
+                    detail: $"No user with username '{username}' exists.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "NotFound"
+                );
+
+            if(user.AdminId != currentAdmin.Id)
+                return Problem(
+                    detail: "You can only delete users under your administration.",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Forbidden"
+                );
+
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
+
             return Ok(new { message = "User deleted successfully." });
+        }
+
+        [HttpPut("{username}/role")]
+        [Authorize(Roles = nameof(UserRole.Admin))]
+        public async Task<IActionResult> ChangeUserRole(string username, ChangeUserRoleDto dto)
+        {
+            var currentAdminUsername = User.Identity?.Name;
+            if (string.IsNullOrEmpty(currentAdminUsername))
+                return Problem(
+                    detail: "User is not authenticated.",
+                    statusCode: StatusCodes.Status401Unauthorized,
+                    title: "Unauthorized"
+                );
+
+            var currentAdmin = await _context.Users.SingleOrDefaultAsync(u => u.Username == currentAdminUsername && u.Role == UserRole.Admin);
+            if(currentAdmin == null)
+                return Problem(
+                   detail: "Only admins can change user roles.",
+                   statusCode: StatusCodes.Status401Unauthorized,
+                   title: "Unauthorized"
+               );
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == username);
+            if (user == null)
+                return Problem(
+                    detail: $"No user with username '{username}' exists.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "NotFound"
+                );
+
+            if(user.AdminId != currentAdmin.Id)
+                return Problem(
+                    detail: "You can only change roles for users under your administration.",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Forbidden"
+                );
+
+            if (!Enum.TryParse<UserRole>(dto.Role, out var newRole))
+                return Problem(
+                    detail: $"Role '{dto.Role}' is not valid. Valid roles are: Developer, SeniorDeveloper, QA, LeadQA.",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "BadRequest"
+                );
+
+            var validTransitions = new Dictionary<UserRole, List<UserRole>>
+            {
+                { UserRole.Developer, new List<UserRole> { UserRole.SeniorDeveloper } },
+                { UserRole.SeniorDeveloper, new List<UserRole> { UserRole.Developer } },
+                { UserRole.QA, new List<UserRole> { UserRole.LeadQA } },
+                { UserRole.LeadQA, new List<UserRole> { UserRole.QA } }
+            };
+
+            if (!validTransitions.TryGetValue(user.Role, out var allowedRoles) || !allowedRoles.Contains(newRole))
+                return Problem(
+                    detail: $"Invalid role transition from '{user.Role}' to '{newRole}'.",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "BadRequest"
+                );
+
+
+            user.Role = newRole;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "User role updated successfully." });
         }
     }
 }
