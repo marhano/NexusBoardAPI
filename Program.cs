@@ -34,6 +34,17 @@ namespace NexusBoardAPI
                 };
             });
 
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", policy =>
+                {
+                    policy
+                        .AllowAnyOrigin()
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                });
+            });
+
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -62,6 +73,8 @@ namespace NexusBoardAPI
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
+            app.UseCors("AllowAll");
 
             app.UseExceptionHandler(errorApp =>
             {
