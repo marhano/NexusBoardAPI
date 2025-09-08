@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NexusBoardAPI.Data;
 
@@ -10,9 +11,11 @@ using NexusBoardAPI.Data;
 namespace NexusBoardAPI.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250908025420_project_change_required")]
+    partial class project_change_required
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.8");
@@ -47,10 +50,6 @@ namespace NexusBoardAPI.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.PrimitiveCollection<string>("Users")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -177,6 +176,9 @@ namespace NexusBoardAPI.Migrations
                     b.Property<DateTime?>("PasswordResetTokenExpiry")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Role")
                         .HasColumnType("INTEGER");
 
@@ -187,6 +189,8 @@ namespace NexusBoardAPI.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AdminId");
+
+                    b.HasIndex("ProjectId");
 
                     b.ToTable("Users");
                 });
@@ -257,6 +261,10 @@ namespace NexusBoardAPI.Migrations
                         .WithMany()
                         .HasForeignKey("AdminId");
 
+                    b.HasOne("NexusBoardAPI.Models.Project", null)
+                        .WithMany("Users")
+                        .HasForeignKey("ProjectId");
+
                     b.Navigation("Admin");
                 });
 
@@ -276,6 +284,8 @@ namespace NexusBoardAPI.Migrations
                     b.Navigation("Artifacts");
 
                     b.Navigation("Threads");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("NexusBoardAPI.Models.ProjectThread", b =>

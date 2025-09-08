@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NexusBoardAPI.Data;
 
@@ -10,9 +11,11 @@ using NexusBoardAPI.Data;
 namespace NexusBoardAPI.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250908022351_project_api")]
+    partial class project_api
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.8");
@@ -24,18 +27,11 @@ namespace NexusBoardAPI.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("AccessToken")
-                        .HasColumnType("TEXT");
-
-                    b.PrimitiveCollection<string>("Admins")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("ApplicationId")
+                    b.Property<int>("ApplicationId")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("CreateBy")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
 
                     b.Property<int>("CreateById")
                         .HasColumnType("INTEGER");
@@ -50,14 +46,12 @@ namespace NexusBoardAPI.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.PrimitiveCollection<string>("Users")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Version")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreateById");
 
                     b.ToTable("Projects");
                 });
@@ -177,6 +171,12 @@ namespace NexusBoardAPI.Migrations
                     b.Property<DateTime?>("PasswordResetTokenExpiry")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ProjectId1")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Role")
                         .HasColumnType("INTEGER");
 
@@ -187,6 +187,10 @@ namespace NexusBoardAPI.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AdminId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("ProjectId1");
 
                     b.ToTable("Users");
                 });
@@ -216,6 +220,17 @@ namespace NexusBoardAPI.Migrations
                         .IsUnique();
 
                     b.ToTable("UserProfiles");
+                });
+
+            modelBuilder.Entity("NexusBoardAPI.Models.Project", b =>
+                {
+                    b.HasOne("NexusBoardAPI.Models.User", "CreateBy")
+                        .WithMany()
+                        .HasForeignKey("CreateById")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreateBy");
                 });
 
             modelBuilder.Entity("NexusBoardAPI.Models.ProjectArtifact", b =>
@@ -257,6 +272,14 @@ namespace NexusBoardAPI.Migrations
                         .WithMany()
                         .HasForeignKey("AdminId");
 
+                    b.HasOne("NexusBoardAPI.Models.Project", null)
+                        .WithMany("Admins")
+                        .HasForeignKey("ProjectId");
+
+                    b.HasOne("NexusBoardAPI.Models.Project", null)
+                        .WithMany("Users")
+                        .HasForeignKey("ProjectId1");
+
                     b.Navigation("Admin");
                 });
 
@@ -273,9 +296,13 @@ namespace NexusBoardAPI.Migrations
 
             modelBuilder.Entity("NexusBoardAPI.Models.Project", b =>
                 {
+                    b.Navigation("Admins");
+
                     b.Navigation("Artifacts");
 
                     b.Navigation("Threads");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("NexusBoardAPI.Models.ProjectThread", b =>

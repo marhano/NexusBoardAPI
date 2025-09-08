@@ -1,6 +1,6 @@
-﻿namespace NexusBoardAPI.Models
+﻿namespace NexusBoardAPI.Models.DTO.Response
 {
-    public class Project
+    public class ProjectResponse
     {
         public int Id { get; set; }
         public required string Name { get; set; }
@@ -15,7 +15,8 @@
 
         public List<string> Admins { get; set; } = new();
         public List<string> Users { get; set; } = new();
-        public ICollection<ProjectArtifact> Artifacts { get; set; } = new List<ProjectArtifact>();
-        public ICollection<ProjectThread> Threads { get; set; } = new List<ProjectThread>();
+
+        public ICollection<ProjectArtifactResponse> Artifacts { get; set; } = new List<ProjectArtifactResponse>();
+        public ICollection<ProjectThreadResponse> Threads { get; set; } = new List<ProjectThreadResponse>();
     }
 }

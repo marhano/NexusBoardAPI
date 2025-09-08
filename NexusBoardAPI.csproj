@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Folder Include="Database\" />
+    <Folder Include="Models\DTO\Parameter\" />
   </ItemGroup>
 
 </Project>
