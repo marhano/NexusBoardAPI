@@ -10,5 +10,6 @@ namespace NexusBoardAPI.Data
         public DbSet<User> Users { get; set; }
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<Project> Projects { get; set; }
+        public DbSet<ProjectArtifact> ProjectArtifacts { get; set; }
     }
 }
